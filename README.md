@@ -39,7 +39,7 @@ pip install -e .
 
 ## 🧩 Ejecutar en Google Colab
 
-Puedes abrir directamente los notebooks de ejemplo sin instalar nada localmente:
+Puedes abrir directamente los notebooks de ejemplo:
 
 👉 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/mirdbg/Entrega1_MCPort/blob/main/notebooks/01_Quickstart.ipynb)
 
@@ -151,19 +151,9 @@ Cubre:
 
 ---
 
-## 🧩 Próximas mejoras
-
-- Correlaciones entre activos en Monte Carlo  
-- Dashboard interactivo (Streamlit)  
-- Exportación a Excel  
-- Backtesting básico
-
----
-
 ## 👩‍💻 Autor
 
-**Miriam del Blanco**  
-💼 Data Analyst | Bankinter · IA aplicada a Finanzas  
+**Miriam del Blanco** 
 📍 Madrid, España  
 🔗 [LinkedIn](https://www.linkedin.com/in/miriambdelblanco) | [GitHub](https://github.com/mirdbg)
 
