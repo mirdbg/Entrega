@@ -316,12 +316,8 @@ def plot_mc_overlay_with_history(history: pd.Series,
                                  ax=None, show=True,
                                  title="Historical + MC Paths (overlay)",
                                  last_n_history: Optional[int] = 252,
-                                 n_show: int = 60):
-    """
-    Superpone el histórico reciente con trayectorias MC re-escaladas para pegar desde el último valor histórico.
-    - history: Serie de valor (equity de cartera o precio de un activo).
-    - values: (n_sims, T+1) saliendo desde el último valor histórico.
-    """
+                                 n_show: int = 60,
+                                 freq: str = "B"):  # 👈 añade un parámetro de frecuencia
     h = history.dropna()
     if h.empty or values is None or values.size == 0:
         return None
@@ -335,15 +331,16 @@ def plot_mc_overlay_with_history(history: pd.Series,
     else:
         fig = ax.figure
 
+    # Histórico
     ax.plot(h.index, h.values, lw=1.8, label="History")
 
-    # Construye eje x sintético para sims (días +1)
-    t = np.arange(values.shape[1])
-    # Re-escalado: ya deberían partir del valor inicial (capital/último precio).
+    # 👇 Construimos fechas simuladas como rango de fechas (no linspace)
+    # El primer punto coincide con la última fecha del histórico
+    sim_index = pd.date_range(start=h.index[-1], periods=values.shape[1], freq=freq)
+
     k = min(n_show, values.shape[0])
     for i in range(k):
-        ax.plot(np.linspace(h.index[-1], h.index[-1] + pd.Timedelta(days=values.shape[1]-1), values.shape[1]),
-                values[i, :], lw=0.9, alpha=0.6)
+        ax.plot(sim_index, values[i, :], lw=0.9, alpha=0.6)
 
     ax.set_title(title)
     ax.set_ylabel("Value")
@@ -352,6 +349,7 @@ def plot_mc_overlay_with_history(history: pd.Series,
     fig.tight_layout()
     _maybe_show_close(fig, show)
     return ax
+
 
 
 def plot_mc_terminal_hist(values: np.ndarray, bins: int = 60, ax=None, show=True, title="Terminal Value Distribution"):
