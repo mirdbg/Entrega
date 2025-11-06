@@ -103,17 +103,15 @@ class PriceSeries:
 
     # ---------- Plot helpers ----------
     def plot_history(self, ax=None, path: str | None = None, show: bool = True):
-        """
-        Dibuja el histórico de precios.
-        - show=True: muestra el gráfico y devuelve None (evita imprimir Axes en Jupyter).
-        - show=False: no muestra y devuelve el Axes (para componer figuras).
-        """
         if self.data.empty:
+            print("PriceSeries.data está vacío: nada que plotear.")
             return None
 
         created = ax is None
         if created:
             fig, ax = plt.subplots(figsize=(9, 4.5), dpi=120)
+        else:
+            fig = ax.figure
 
         s = self.data["price"].dropna()
         ax.plot(s.index, s.values, linewidth=1.5)
@@ -121,9 +119,8 @@ class PriceSeries:
         ax.set_ylabel("Price")
         ax.grid(True, alpha=0.3)
 
-        # Formateo de fechas si el índice es datetime
         try:
-            import pandas as pd
+            import pandas as pd, matplotlib.dates as mdates
             if isinstance(s.index, pd.DatetimeIndex):
                 locator = mdates.AutoDateLocator(minticks=4, maxticks=8)
                 ax.xaxis.set_major_locator(locator)
@@ -131,37 +128,34 @@ class PriceSeries:
         except Exception:
             pass
 
-        plt.tight_layout()
+        fig.tight_layout()
         if path:
-            ax.figure.savefig(path, bbox_inches="tight")
+            fig.savefig(path, bbox_inches="tight")
 
         if show:
             try:
-                import matplotlib.pyplot as _plt
-                _plt.show()
+                from IPython.display import display
+                display(fig)       # fuerza render en Jupyter/Colab/VS Code
             except Exception:
-                pass
-            if created:
-                plt.close(ax.figure)
-            return None
-        else:
-            return ax
+                plt.show()
+
+        # ¡NO cerramos la figura!
+        return ax
 
 
     def plot_drawdown(self, ax=None, path: str | None = None, fill: bool = True, show: bool = True):
-        """
-        Underwater/Drawdown: DD_t = price_t / cummax(price)_t - 1 (≤ 0).
-        - show=True: muestra y devuelve None.
-        - show=False: no muestra y devuelve Axes.
-        """
         s = self.data["price"].dropna()
         if s.empty:
+            print("PriceSeries.data está vacío: nada que plotear.")
             return None
 
         dd = s / s.cummax() - 1
+
         created = ax is None
         if created:
             fig, ax = plt.subplots(figsize=(9, 4.5), dpi=120)
+        else:
+            fig = ax.figure
 
         if fill:
             ax.fill_between(dd.index, dd.values, 0, alpha=0.3)
@@ -172,21 +166,20 @@ class PriceSeries:
         ax.set_ylabel("Drawdown")
         ax.grid(True, alpha=0.3)
 
-        plt.tight_layout()
+        fig.tight_layout()
         if path:
-            ax.figure.savefig(path, bbox_inches="tight")
+            fig.savefig(path, bbox_inches="tight")
 
         if show:
             try:
-                import matplotlib.pyplot as _plt
-                _plt.show()
+                from IPython.display import display
+                display(fig)
             except Exception:
-                pass
-            if created:
-                plt.close(ax.figure)
-            return None
-        else:
-            return ax
+                plt.show()
+
+        # ¡NO cerramos la figura!
+        return ax
+
 
 
     def plot_rolling_vol(self, window: int = 20, ax=None, path: str | None = None, show: bool = True):
