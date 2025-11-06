@@ -7,6 +7,7 @@ import numpy as np
 import math
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 from scipy.stats import skew, kurtosis
 
 
@@ -98,36 +99,107 @@ class PriceSeries:
         s["cvar_95"] = float(c)
         return s
 
-        """
+    
 
     # ---------- Plot helpers ----------
-    def plot_history(self, path: Optional[str] = None):
+    def plot_history(self, ax=None, path: str | None = None):
         if self.data.empty:
-            return
-        plt.figure()
-        self.data["price"].plot(title=f"Historical Price - {self.symbol}")
-        if path:
-            plt.savefig(path, bbox_inches="tight")
-            plt.close()
+            return None
+        created = ax is None
+        if created:
+            fig, ax = plt.subplots(figsize=(9, 4.5), dpi=120)
 
-    def plot_simulations(self, paths: np.ndarray, max_paths: int = 50, path: Optional[str] = None):
-        k = min(max_paths, paths.shape[1])
-        plt.figure()
+        s = self.data["price"].dropna()
+        ax.plot(s.index, s.values, linewidth=1.5)
+        ax.set_title(f"Historical Price — {self.symbol}")
+        ax.set_ylabel("Price")
+        ax.grid(True, alpha=0.3)
+
+        # Fechas bonitas si el index es datetime
+        if np.issubdtype(s.index.dtype, np.datetime64):
+            locator = mdates.AutoDateLocator(minticks=4, maxticks=8)
+            ax.xaxis.set_major_locator(locator)
+            ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
+
+        if path:
+            plt.tight_layout()
+            ax.figure.savefig(path, bbox_inches="tight")
+        if created:
+            plt.tight_layout()
+            plt.close(ax.figure)
+        return ax
+
+    def plot_simulations(self, paths: np.ndarray, max_paths: int = 50, ax=None, path: str | None = None):
+        if paths is None or paths.size == 0:
+            return None
+        T, N = paths.shape
+        created = ax is None
+        if created:
+            fig, ax = plt.subplots(figsize=(9, 4.5), dpi=120)
+
+        # percentiles informativos
+        p_low, p_med, p_high = np.nanpercentile(paths, [5, 50, 95], axis=1)
+        x = np.arange(T)
+
+        # unas pocas trayectorias con alpha
+        k = min(max_paths, N)
         for i in range(k):
-            plt.plot(paths[:, i])
-        plt.title(f"Monte Carlo Simulations - {self.symbol}")
-        if path:
-            plt.savefig(path, bbox_inches="tight")
-            plt.close()
+            ax.plot(x, paths[:, i], linewidth=0.8, alpha=0.35)
 
-    def plot_final_hist(self, finals: np.ndarray, bins: int = 50, path: Optional[str] = None):
-        plt.figure()
-        plt.hist(finals, bins=bins)
-        plt.title(f"Terminal Value Distribution - {self.symbol}")
+        # banda 5–95 y mediana
+        ax.fill_between(x, p_low, p_high, alpha=0.2, linewidth=0)
+        ax.plot(x, p_med, linewidth=1.6)
+
+        ax.set_title(f"Monte Carlo Simulations — {self.symbol} (N={N})")
+        ax.set_xlabel("Step")
+        ax.set_ylabel("Price")
+        ax.grid(True, alpha=0.3)
+
         if path:
-            plt.savefig(path, bbox_inches="tight")
-            plt.close()
-    """
+            plt.tight_layout()
+            ax.figure.savefig(path, bbox_inches="tight")
+        if created:
+            plt.tight_layout()
+            plt.close(ax.figure)
+        return ax
+
+    def plot_final_hist(self, finals: np.ndarray, bins: int = 50, ax=None, path: str | None = None):
+        if finals is None or finals.size == 0:
+            return None
+        vals = np.asarray(finals)
+        vals = vals[np.isfinite(vals)]
+        created = ax is None
+        if created:
+            fig, ax = plt.subplots(figsize=(9, 4.5), dpi=120)
+
+        ax.hist(vals, bins=bins, density=True, alpha=0.8)
+        med = np.nanmedian(vals)
+        mean = np.nanmean(vals)
+        q05, q95 = np.nanpercentile(vals, [5, 95])
+
+        # líneas guía
+        ax.axvline(med, linestyle="--", linewidth=1.2)
+        ax.axvline(mean, linestyle=":", linewidth=1.2)
+        ax.axvline(q05, linestyle="--", linewidth=0.9, alpha=0.7)
+        ax.axvline(q95, linestyle="--", linewidth=0.9, alpha=0.7)
+
+        ax.set_title(f"Terminal Value Distribution — {self.symbol}")
+        ax.set_xlabel("Terminal Price")
+        ax.set_ylabel("Density")
+        ax.grid(True, alpha=0.3)
+        ax.legend(
+            ["median", "mean", "p05", "p95"],
+            loc="best", frameon=False
+        )
+
+        if path:
+            plt.tight_layout()
+            ax.figure.savefig(path, bbox_inches="tight")
+        if created:
+            plt.tight_layout()
+            plt.close(ax.figure)
+        return ax
+        
 @dataclass
 class Portfolio:
     positions: List["PriceSeries"]
