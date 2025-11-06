@@ -317,7 +317,9 @@ def plot_mc_overlay_with_history(history: pd.Series,
                                  title="Historical + MC Paths (overlay)",
                                  last_n_history: Optional[int] = 252,
                                  n_show: int = 60,
-                                 freq: str = "B"):  # 👈 añade un parámetro de frecuencia
+                                 freq: str = "B",
+                                 start_next_period: bool = True,           # 👈 NUEVO
+                                 rescale_to_last_history: bool = True):     # 👈 NUEVO
     h = history.dropna()
     if h.empty or values is None or values.size == 0:
         return None
@@ -331,16 +333,30 @@ def plot_mc_overlay_with_history(history: pd.Series,
     else:
         fig = ax.figure
 
-    # Histórico
+    # 1) Histórico
     ax.plot(h.index, h.values, lw=1.8, label="History")
 
-    # 👇 Construimos fechas simuladas como rango de fechas (no linspace)
-    # El primer punto coincide con la última fecha del histórico
-    sim_index = pd.date_range(start=h.index[-1], periods=values.shape[1], freq=freq)
+    # 2) Índice temporal para las simulaciones
+    start = h.index[-1]
+    if start_next_period:
+        # arrancar en el siguiente periodo de la frecuencia elegida
+        start = start + pd.tseries.frequencies.to_offset(freq)
+    sim_index = pd.date_range(start=start, periods=values.shape[1], freq=freq)
 
-    k = min(n_show, values.shape[0])
+    # 3) Reescalar trayectorias al último valor histórico
+    if rescale_to_last_history:
+        last_hist = float(h.values[-1])
+        # valores iniciales de cada trayectoria (columna 0)
+        v0 = values[:, 0].astype(float)
+        scale = (last_hist / v0)[:, None]  # (n_sims, 1)
+        plot_vals = values * scale
+    else:
+        plot_vals = values
+
+    # 4) Plotear un subconjunto
+    k = min(n_show, plot_vals.shape[0])
     for i in range(k):
-        ax.plot(sim_index, values[i, :], lw=0.9, alpha=0.6)
+        ax.plot(sim_index, plot_vals[i, :], lw=0.9, alpha=0.6)
 
     ax.set_title(title)
     ax.set_ylabel("Value")
@@ -349,6 +365,7 @@ def plot_mc_overlay_with_history(history: pd.Series,
     fig.tight_layout()
     _maybe_show_close(fig, show)
     return ax
+
 
 
 

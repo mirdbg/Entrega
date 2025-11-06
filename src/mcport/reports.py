@@ -53,18 +53,46 @@ def _figure_text_page(title: str, lines: Sequence[str], footer: Optional[str] = 
 
 
 def _table_figure(title: str, df: pd.DataFrame, note: Optional[str] = None):
+    """
+    Dibuja una tabla centrada ocupando toda la página:
+    - Resetea el índice para que NO use rowLabels (que desalinean a la izquierda).
+    - Escala y centra la tabla dentro del canvas.
+    """
+    # A4 vertical aprox.
     fig = plt.figure(figsize=(8.27, 11.69), dpi=_DPI)
     fig.suptitle(title, fontsize=16, y=0.98)
-    ax = fig.add_axes([0.06, 0.06, 0.88, 0.88])
+
+    # Lienzo amplio y centrado
+    ax = fig.add_axes([0.04, 0.06, 0.92, 0.88])  # márgenes simétricos
     ax.axis("off")
-    tbl = ax.table(cellText=df.values, colLabels=df.columns, rowLabels=df.index,
-                   loc="center")
+
+    # Convertimos el índice en la primera columna para evitar rowLabels
+    df_plot = df.reset_index()
+    col_labels = list(df_plot.columns)
+    cell_text = df_plot.values
+
+    # Construye la tabla centrada
+    tbl = ax.table(cellText=cell_text, colLabels=col_labels, loc="center")
+
+    # Tipografía y escalado
     tbl.auto_set_font_size(False)
     tbl.set_fontsize(9)
+
+    # Intento de auto-anchos por contenido (si tu versión de mpl lo soporta)
+    try:
+        tbl.auto_set_column_width(col=list(range(len(col_labels))))
+    except Exception:
+        pass
+
+    # Escala vertical para que quepa mejor; ajusta si tienes muchas filas
     tbl.scale(1.0, 1.2)
+
+    # Nota al pie opcional
     if note:
         ax.text(0.0, 0.02, note, fontsize=9, va="bottom", ha="left", alpha=0.6)
+
     return fig
+
 
 
 @dataclass
