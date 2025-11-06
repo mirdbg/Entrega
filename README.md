@@ -1,7 +1,6 @@
 # 🧠 MCPort — Monte Carlo Portfolio Toolkit
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-pytest%20passing-brightgreen.svg)](#-tests)
 [![Status](https://img.shields.io/badge/status-active-success.svg)]()
 
 > **MCPort** es un toolkit educativo y financiero para simular, analizar y visualizar carteras de inversión mediante métodos de **Monte Carlo**.  
