@@ -10,6 +10,7 @@
 
 ## 🚀 Instalación local
 
+```python
 # 1 Clonar el repositorio
 git clone https://github.com/mirdbg/Entrega1_MCPort.git
 cd Entrega1_MCPort
@@ -26,7 +27,7 @@ pip install -U pip
 pip install -r requirements.txt
 # o modo editable si quieres importar mcport desde src/
 pip install -e .
-
+```
 ---
 
 ## 🧩 Ejecutar en Google Colab
