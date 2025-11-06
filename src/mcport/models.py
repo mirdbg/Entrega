@@ -130,7 +130,7 @@ class PriceSeries:
             # si NO guardas, no cierres; en notebook se verá automáticamente
             plt.tight_layout()
             # en scripts conviene:
-            # plt.show()
+            plt.show()
         return ax
     
     def plot_drawdown(self, ax=None, path=None, fill=True):
@@ -155,7 +155,7 @@ class PriceSeries:
             # si NO guardas, no cierres; en notebook se verá automáticamente
             plt.tight_layout()
             # en scripts conviene:
-            # plt.show()
+            plt.show()
         return ax
 
     def plot_rolling_vol(self, window=20, ax=None, path=None):
@@ -178,7 +178,7 @@ class PriceSeries:
             # si NO guardas, no cierres; en notebook se verá automáticamente
             plt.tight_layout()
             # en scripts conviene :
-            # plt.show()
+            plt.show()
 
         return ax
         
