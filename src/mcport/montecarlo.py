@@ -1,4 +1,4 @@
-from __future__ import annotations
+from dataclasses import dataclass, field
 from typing import Optional, Dict, Any
 import numpy as np
 import pandas as pd
@@ -6,62 +6,60 @@ import pandas as pd
 @dataclass
 class MonteCarloSimulation:
     """
-    Monte Carlo (GBM multivariante) aplicado a un Portfolio.
-
-    - Usa los retornos logarítmicos históricos de los activos del portfolio
-      para estimar las medias, volatilidades y correlaciones.
-    - Simula trayectorias correlacionadas usando descomposición de Cholesky.
-    - Calcula métricas finales como VaR y CVaR.
+    Monte Carlo (GBM) para PriceSeries o Portfolio.
+    - Si recibe un PriceSeries: simula un activo individual.
+    - Si recibe un Portfolio: simula activos correlacionados ponderados por pesos.
     """
 
-    portfolio: object                  # objeto tipo Portfolio
-    days: int = 252                    # horizonte en días hábiles
-    n_sims: int = 2000                 # número de simulaciones
-    seed: int = 123                    # semilla RNG
-    capital_inicial: float = 1000.0    # capital inicial total
-    correlate_assets: bool = True      # si False: shocks independientes
+    price_series: object                # PriceSeries o Portfolio
+    days: int = 252
+    n_sims: int = 2000
+    seed: int = 123
+    capital_inicial: float = 1000.0
+    correlate_assets: bool = True
 
-    # Atributos internos
-    _last_paths: Optional[np.ndarray] = field(init=False, default=None)  # (sims, days+1, n_assets)
-    _last_values: Optional[np.ndarray] = field(init=False, default=None) # (sims, days+1)
+    _last_paths: Optional[np.ndarray] = field(init=False, default=None)
+    _last_values: Optional[np.ndarray] = field(init=False, default=None)
     _last_summary: Optional[Dict[str, Any]] = field(init=False, default=None)
 
     # --------------------------
     # MÉTODOS PRINCIPALES
     # --------------------------
     def _prepare_inputs(self) -> Dict[str, Any]:
-        """Prepara precios, retornos, medias, vols y correlaciones."""
-        port = self.portfolio
-        df_prices = port.aligned_prices()
-        if df_prices.empty:
-            raise ValueError("❌ Portfolio sin precios históricos válidos.")
+        """Detecta si el input es un PriceSeries o un Portfolio y prepara datos coherentes."""
+        obj = self.price_series
 
-        # Retornos logarítmicos
-        rets = np.log(df_prices).diff().dropna()
-        if rets.empty:
-            raise ValueError("❌ Portfolio sin retornos suficientes.")
-
-        # Medias y volatilidades diarias
-        mu_d = rets.mean().to_numpy(float)
-        sigma_d = rets.std(ddof=1).to_numpy(float)
-
-        # Correlación o matriz identidad
-        if self.correlate_assets:
-            corr = rets.corr().to_numpy(float)
-        else:
-            corr = np.eye(len(mu_d), dtype=float)
-
-        # Covarianza y Cholesky
-        cov_d = np.outer(sigma_d, sigma_d) * corr
-        try:
+        # 🔹 Caso 1: PriceSeries
+        if hasattr(obj, "data") and not hasattr(obj, "positions"):
+            df_prices = obj.data[["price"]].copy()
+            rets = np.log(df_prices["price"]).diff().dropna()
+            mu_d = np.array([rets.mean()])
+            sigma_d = np.array([rets.std(ddof=1)])
+            corr = np.eye(1)
+            cov_d = np.outer(sigma_d, sigma_d)
             L = np.linalg.cholesky(cov_d)
-        except np.linalg.LinAlgError:
-            L = np.linalg.cholesky(cov_d + 1e-10 * np.eye(len(mu_d)))
+            last_prices = np.array([df_prices["price"].iloc[-1]])
+            weights = np.array([1.0])
+            units = np.array([self.capital_inicial / last_prices[0]])
 
-        # Últimos precios y unidades
-        last_prices = df_prices.iloc[-1].to_numpy(float)
-        weights = np.array(port.weights, dtype=float)
-        units = (weights * self.capital_inicial) / last_prices
+        # 🔹 Caso 2: Portfolio
+        elif hasattr(obj, "positions"):
+            df_prices = obj.aligned_prices()
+            rets = np.log(df_prices).diff().dropna()
+            mu_d = rets.mean().to_numpy(float)
+            sigma_d = rets.std(ddof=1).to_numpy(float)
+            corr = rets.corr().to_numpy(float) if self.correlate_assets else np.eye(len(mu_d))
+            cov_d = np.outer(sigma_d, sigma_d) * corr
+            try:
+                L = np.linalg.cholesky(cov_d)
+            except np.linalg.LinAlgError:
+                L = np.linalg.cholesky(cov_d + 1e-10 * np.eye(len(mu_d)))
+            last_prices = df_prices.iloc[-1].to_numpy(float)
+            weights = np.array(obj.weights, dtype=float)
+            units = (weights * self.capital_inicial) / last_prices
+
+        else:
+            raise TypeError("❌ El objeto debe ser PriceSeries o Portfolio válido.")
 
         return {
             "prices": df_prices,
@@ -76,8 +74,10 @@ class MonteCarloSimulation:
             "weights": weights
         }
 
+    # --------------------------
+    # Simulación GBM
+    # --------------------------
     def monte_carlo(self) -> Dict[str, Any]:
-        """Ejecuta la simulación Monte Carlo GBM para todos los activos."""
         rng = np.random.default_rng(self.seed)
         p = self._prepare_inputs()
 
@@ -91,24 +91,31 @@ class MonteCarloSimulation:
             prices = p["last_prices"].copy()
             for t in range(1, self.days + 1):
                 z = rng.standard_normal(n_assets)
-                shocks = p["L"] @ z  # correlacionados
+                shocks = p["L"] @ z
                 prices = prices * np.exp(drift + shocks)
                 tray[s, t, :] = prices
 
-        valores = np.dot(tray, p["units"])  # valor total por sim/día
+        # Si solo hay 1 activo, valores = precios directamente
+        if n_assets == 1:
+            valores = tray[:, :, 0]
+        else:
+            valores = np.dot(tray, p["units"])
+
         self._last_paths = tray
         self._last_values = valores
         self._inputs = p
         return {"trayectorias": tray, "valores": valores, "inputs": p}
 
+    # --------------------------
+    # Resumen de resultados
+    # --------------------------
     def summarize(self) -> Dict[str, Any]:
-        """Calcula métricas finales: retorno, media, varianza, VaR, CVaR, etc."""
         if self._last_values is None:
             raise RuntimeError("Primero ejecuta `monte_carlo()`.")
 
         vals = self._last_values
-        capital0 = float(vals[0, 0])
-        final_values = vals[:, -1]
+        capital0 = float(vals[0, 0]) if vals.ndim > 1 else float(vals[0])
+        final_values = vals[:, -1] if vals.ndim > 1 else vals[-1]
         returns = (final_values - capital0) / capital0
 
         mu_ann = float(self._inputs["mu_d"].mean() * 252)
@@ -131,8 +138,10 @@ class MonteCarloSimulation:
         self._last_summary = summary
         return summary
 
+    # --------------------------
+    # Ejecución completa
+    # --------------------------
     def simulate_and_summarize(self) -> Dict[str, Any]:
-        """Ejecuta la simulación completa y devuelve resultados + resumen."""
         res = self.monte_carlo()
         summary = self.summarize()
         return {
