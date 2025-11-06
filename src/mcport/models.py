@@ -4,6 +4,7 @@ import os
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any
 import numpy as np
+import math
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.stats import skew, kurtosis
@@ -197,7 +198,7 @@ class Portfolio:
         else:
             self.mu_daily = float(r_port.mean())
             self.sigma_daily = float(r_port.std(ddof=1))
-            self.mu_ann, self.sigma_ann = _annualize(self.mu_daily, self.sigma_daily)
+            self.mu_ann, self.sigma_ann = self.mu_daily*252 , self.sigma_daily*math.sqrt(252)
 
         # Correlación entre activos (útil para Monte Carlo multivariante)
         prices = self.aligned_prices()
