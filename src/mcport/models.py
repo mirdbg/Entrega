@@ -102,9 +102,15 @@ class PriceSeries:
     
 
     # ---------- Plot helpers ----------
-    def plot_history(self, ax=None, path: str | None = None):
+    def plot_history(self, ax=None, path: str | None = None, show: bool = True):
+        """
+        Dibuja el histórico de precios.
+        - show=True: muestra el gráfico y devuelve None (evita imprimir Axes en Jupyter).
+        - show=False: no muestra y devuelve el Axes (para componer figuras).
+        """
         if self.data.empty:
             return None
+
         created = ax is None
         if created:
             fig, ax = plt.subplots(figsize=(9, 4.5), dpi=120)
@@ -115,72 +121,114 @@ class PriceSeries:
         ax.set_ylabel("Price")
         ax.grid(True, alpha=0.3)
 
-        # Fechas bonitas si el index es datetime
-        if np.issubdtype(s.index.dtype, np.datetime64):
-            locator = mdates.AutoDateLocator(minticks=4, maxticks=8)
-            ax.xaxis.set_major_locator(locator)
-            ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
+        # Formateo de fechas si el índice es datetime
+        try:
+            import pandas as pd
+            if isinstance(s.index, pd.DatetimeIndex):
+                locator = mdates.AutoDateLocator(minticks=4, maxticks=8)
+                ax.xaxis.set_major_locator(locator)
+                ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
+        except Exception:
+            pass
 
+        plt.tight_layout()
         if path:
-            plt.tight_layout()
             ax.figure.savefig(path, bbox_inches="tight")
-            # si guardas, puedes cerrar para no “llenar” la memoria
-            plt.close(ax.figure)
+
+        if show:
+            try:
+                import matplotlib.pyplot as _plt
+                _plt.show()
+            except Exception:
+                pass
+            if created:
+                plt.close(ax.figure)
+            return None
         else:
-            # si NO guardas, no cierres; en notebook se verá automáticamente
-            plt.tight_layout()
-            # en scripts conviene:
-            plt.show()
-        return ax
-    
-    def plot_drawdown(self, ax=None, path=None, fill=True):
+            return ax
+
+
+    def plot_drawdown(self, ax=None, path: str | None = None, fill: bool = True, show: bool = True):
+        """
+        Underwater/Drawdown: DD_t = price_t / cummax(price)_t - 1 (≤ 0).
+        - show=True: muestra y devuelve None.
+        - show=False: no muestra y devuelve Axes.
+        """
         s = self.data["price"].dropna()
+        if s.empty:
+            return None
+
         dd = s / s.cummax() - 1
         created = ax is None
         if created:
-            fig, ax = plt.subplots(figsize=(9,4.5), dpi=120)
+            fig, ax = plt.subplots(figsize=(9, 4.5), dpi=120)
+
         if fill:
             ax.fill_between(dd.index, dd.values, 0, alpha=0.3)
         else:
             ax.plot(dd.index, dd.values, lw=1.2)
-        ax.set_title(f"Drawdown — {self.symbol}")
-        ax.set_ylabel("DD")
-        ax.grid(True, alpha=0.3)
-        if path:
-            plt.tight_layout()
-            ax.figure.savefig(path, bbox_inches="tight")
-            # si guardas, puedes cerrar para no “llenar” la memoria
-            plt.close(ax.figure)
-        else:
-            # si NO guardas, no cierres; en notebook se verá automáticamente
-            plt.tight_layout()
-            # en scripts conviene:
-            plt.show()
-        return ax
 
-    def plot_rolling_vol(self, window=20, ax=None, path=None):
+        ax.set_title(f"Drawdown — {self.symbol}")
+        ax.set_ylabel("Drawdown")
+        ax.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+        if path:
+            ax.figure.savefig(path, bbox_inches="tight")
+
+        if show:
+            try:
+                import matplotlib.pyplot as _plt
+                _plt.show()
+            except Exception:
+                pass
+            if created:
+                plt.close(ax.figure)
+            return None
+        else:
+            return ax
+
+
+    def plot_rolling_vol(self, window: int = 20, ax=None, path: str | None = None, show: bool = True):
+        """
+        Volatilidad anualizada móvil: std(returns, window) * sqrt(252).
+        - show=True: muestra el gráfico y devuelve None (para que Jupyter no imprima el Axes).
+        - show=False: no hace show y devuelve el Axes (útil para componer figuras).
+        """
         r = self.log_returns()
-        if r.empty: return None
+        if r.empty:
+            return None
+
         vol = r.rolling(window).std() * np.sqrt(252)
         created = ax is None
         if created:
-            fig, ax = plt.subplots(figsize=(9,4.5), dpi=120)
+            fig, ax = plt.subplots(figsize=(9, 4.5), dpi=120)
+
         ax.plot(vol.index, vol.values, lw=1.4)
         ax.set_title(f"Rolling Vol ({window}) — {self.symbol}")
         ax.set_ylabel("Ann. Vol")
         ax.grid(True, alpha=0.3)
-        if path:
-            plt.tight_layout()
-            ax.figure.savefig(path, bbox_inches="tight")
-            # si guardas, puedes cerrar para no “llenar” la memoria
-            plt.close(ax.figure)
-        else:
-            # si NO guardas, no cierres; en notebook se verá automáticamente
-            plt.tight_layout()
-            # en scripts conviene :
-            plt.show()
 
-        return ax
+        plt.tight_layout()
+
+        if path:
+            ax.figure.savefig(path, bbox_inches="tight")
+
+        # lógica de cierre/muestra
+        if show:
+            # en notebook, forzamos el render si no hay backend inline
+            try:
+                import matplotlib.pyplot as _plt
+                _plt.show()
+            except Exception:
+                pass
+            if created:
+                plt.close(ax.figure)
+            return None
+        else:
+            # no mostramos; devolvemos el Axes para seguir trabajando con él
+            return ax
+
         
 @dataclass
 class Portfolio:
