@@ -97,61 +97,7 @@ class PriceSeries:
         s["cvar_95"] = float(c)
         return s
 
-    # ---------- Monte Carlo ----------
-    """"
-    def monte_carlo(
-        self,
-        days: int = 252,
-        n_sims: int = 2000,
-        seed: int | None = 123,
-        start_price: float | None = None,
-    ) -> np.ndarray:
-        Simula trayectorias futuras de precio usando un proceso tipo GBM.
-        Usa mu y sigma empíricos calculados a partir de los log-returns
-        históricos de esta serie.
-
-        Devuelve un array de forma (days+1, n_sims).
-       
-        # 1) Comprobar que hay datos
-        if self.data.empty:
-            raise ValueError("No data in PriceSeries.")
-
-        # 2) Precio inicial = último precio real o start_price
-        price0 = float(self.data["price"].iloc[-1]) if start_price is None else float(start_price)
-
-        # 3) Log-returns históricos
-        r = self.log_returns()
-        if r.empty:
-            raise ValueError("Insufficient history for returns.")
-
-        # 4) Estimar mu y sigma a partir de los datos
-        mu = r.mean()
-        sigma = r.std(ddof=1)
-
-        if np.isnan(mu) or np.isnan(sigma) or sigma <= 0:
-            raise ValueError("Invalid drift/vol estimates from history.")
-
-        # 5) Generar matriz aleatoria N(0,1) de tamaño (days, n_sims)
-        rng = np.random.default_rng(seed)
-        z = rng.standard_normal((days, n_sims))
-
-        # 6) Incrementos de GBM en log-precios. Genera una matriz (days, n_sims) con los incrementos diarios
-        increments = (mu - 0.5 * sigma**2) + sigma * z
-
-        # 7) Acumular en el tiempo (añadimos día 0). Genera matriz de log-precios en todas las simulaciones
-        paths = np.vstack([ #esto solo pega la fila de ceros al principio
-            np.zeros((1, n_sims)), #añade fila de ceros para el día 0 desplazamiento cero
-            np.cumsum(increments, axis=0) #lo importante: suma acumulada de los logs 
-        ])
-
-        # 8) Pasar de log a precio
-        prices = price0 * np.exp(paths)
-        return prices
-
-
-    def final_value_montecarlo(self, prices: np.ndarray) -> np.ndarray:
-        Vector con últimos precios de cada simulación.
-        return prices[-1, :]
+        """
 
     # ---------- Plot helpers ----------
     def plot_history(self, path: Optional[str] = None):
@@ -188,6 +134,13 @@ class Portfolio:
     name: str = "Cartera"
     currency: str = "USD"
 
+    # --- Stats mínimas (se rellenan en __post_init__/refresh_stats) ---
+    mu_daily: float = field(init=False, default=np.nan)
+    sigma_daily: float = field(init=False, default=np.nan)
+    mu_ann: float = field(init=False, default=np.nan)
+    sigma_ann: float = field(init=False, default=np.nan)
+    corr: pd.DataFrame = field(init=False, default_factory=pd.DataFrame)
+
     def __post_init__(self):
         if len(self.positions) != len(self.weights):
             raise ValueError("Se debe introducir el mismo número de posiciones y pesos.")
@@ -197,10 +150,13 @@ class Portfolio:
         if not np.isclose(total, 1.0):
             # Normalize to avoid errors; warn in report later
             self.weights = (w / total).tolist()
+        
+        # ➜ calcular estadísticas mínimas al crear
+        self._compute_min_stats()
 
     # ---------- Core methods ----------
     def aligned_prices(self) -> pd.DataFrame:
-        """Devuelve series de precios en la intersección de las fehcas"""
+        """Devuelve df de precios (columna llamada como ticker) en la intersección de las fehcas"""
         frames = []
         for ps in self.positions:
             s = ps.data["price"].rename(ps.symbol)
@@ -228,60 +184,89 @@ class Portfolio:
     def log_returns(self) -> pd.Series:
         eq = self.value_series()
         return np.log(eq).diff().dropna()
-    """
-    # ---------- Monte Carlo at portfolio level ----------
-    def monte_carlo(
-        self,
-        days: int = 252,
-        n_sims: int = 2000,
-        seed: Optional[int] = 123,
-        by_components: bool = False,
-    ) -> np.ndarray:
-        
-        Simulate future paths:
-        - If by_components=False: simulate the portfolio using its aggregate mu/sigma.
-        - If by_components=True: simulate each asset and combine with weights daily.
-        Returns (days+1, n_sims) portfolio equity paths.
-        
-        rng = np.random.default_rng(seed)
-        if by_components:
-            # Simulate each component independently (no correlation for simplicity)
-            comp_paths = []
-            for ps in self.positions:
-                r = ps.log_returns()
-                mu, sigma = r.mean(), r.std(ddof=1)
-                z = rng.standard_normal((days, n_sims))
-                inc = (mu - 0.5 * sigma**2) + sigma * z
-                s0 = ps.data["price"].iloc[-1]
-                paths = s0 * np.exp(np.vstack([np.zeros((1, n_sims)), np.cumsum(inc, axis=0)]))
-                comp_paths.append(paths)
-            # Combine by weights by converting to daily returns and weighting
-            w = np.array(self.weights)[:, None]  # shape (k,1)
-            # Compute portfolio path from weighted sum of normalized returns
-            # Convert component prices to log-returns per day then aggregate
-            agg = None
-            for i, paths in enumerate(comp_paths):
-                # Compute log returns from simulated prices
-                lr = np.diff(np.log(paths), axis=0)  # shape (days, sims)
-                contrib = w[i] * lr
-                agg = contrib if agg is None else agg + contrib
-            # Convert back to equity curve
-            eq_paths = np.vstack([np.zeros((1, n_sims)), np.cumsum(agg, axis=0)])
-            # Start at 1.0
-            eq_paths = np.exp(eq_paths)
-            return eq_paths
-        else:
-            # Aggregate stats from portfolio historical returns
-            r = self.log_returns()
-            if r.empty:
-                raise ValueError("Portfolio has insufficient history.")
-            mu, sigma = r.mean(), r.std(ddof=1)
-            z = rng.standard_normal((days, n_sims))
-            inc = (mu - 0.5 * sigma**2) + sigma * z
-            paths = np.vstack([np.zeros((1, n_sims)), np.cumsum(inc, axis=0)])
-            eq_paths = np.exp(paths)  # start at 1.0
-            return eq_paths
 
+
+
+    # ---------- stats mínimas ----------
+    def _compute_min_stats(self) -> None:
+        """Calcula y guarda mu/σ diarios y anualizados del PORTFOLIO y corr entre activos."""
+        # Stats del portfolio agregado
+        r_port = self.log_returns()
+        if r_port.empty:
+            self.mu_daily = self.sigma_daily = self.mu_ann = self.sigma_ann = np.nan
+        else:
+            self.mu_daily = float(r_port.mean())
+            self.sigma_daily = float(r_port.std(ddof=1))
+            self.mu_ann, self.sigma_ann = _annualize(self.mu_daily, self.sigma_daily)
+
+        # Correlación entre activos (útil para Monte Carlo multivariante)
+        prices = self.aligned_prices()
+        if prices.empty:
+            self.corr = pd.DataFrame()
+        else:
+            self.corr = np.log(prices).diff().dropna().corr()
+
+    def refresh_stats(self) -> None:
+        """Recalcula las estadísticas mínimas (llamar tras cambios de posiciones/pesos)."""
+        # normaliza por si cambiaron pesos
+        w = np.array(self.weights, dtype=float)
+        total = w.sum()
+        if not np.isclose(total, 1.0):
+            self.weights = (w / total).tolist()
+        self._compute_min_stats()
+
+    def extra_stats_from_returns(r: pd.Series, rf_daily: float = 0.0) -> dict:
+        """
+        Estadísticos adicionales a partir de retornos log diarios de PORTFOLIO.
+        Devuelve: skew, kurtosis (exceso), sharpe (diario y anual), sortino (anual),
+                VaR/CVaR 95% (diarios), max drawdown.
+        """
+        if r is None or r.empty:
+            return {k: np.nan for k in [
+                "skew","kurtosis","sharpe_daily","sharpe_annual",
+                "sortino_annual","VaR95","CVaR95","max_drawdown"
+            ]}
+
+        mu = r.mean()
+        sigma = r.std(ddof=1)
+        downside = r[r < rf_daily]
+        downside_sigma = downside.std(ddof=1) if len(downside) > 0 else np.nan
+
+        # Sharpe
+        sharpe_daily = (mu - rf_daily) / sigma if sigma and sigma > 0 else np.nan
+        sharpe_annual = sharpe_daily * np.sqrt(252) if not np.isnan(sharpe_daily) else np.nan
+
+        # Sortino (usa solo volatilidad a la baja)
+        sortino_daily = (mu - rf_daily) / downside_sigma if downside_sigma and downside_sigma > 0 else np.nan
+        sortino_annual = sortino_daily * np.sqrt(252) if not np.isnan(sortino_daily) else np.nan
+
+        # VaR/CVaR al 95% (sobre retornos diarios)
+        var95 = np.percentile(r, 5)
+        cvar95 = r[r <= var95].mean()
+
+        # Max drawdown (desde la curva de equity)
+        eq = np.exp(r.cumsum())
+        peak = eq.cummax()
+        dd = (eq / peak) - 1.0
+        max_dd = float(dd.min())
+
+        return {
+            "skew": float(r.skew()),
+            "kurtosis": float(r.kurt()),  # exceso (normal = 0)
+            "sharpe_daily": float(sharpe_daily) if sharpe_daily == sharpe_daily else np.nan,
+            "sharpe_annual": float(sharpe_annual) if sharpe_annual == sharpe_annual else np.nan,
+            "sortino_annual": float(sortino_annual) if sortino_annual == sortino_annual else np.nan,
+            "VaR95": float(var95),
+            "CVaR95": float(cvar95),
+            "max_drawdown": max_dd
+            }
+
+    def extra_stats_from_portfolio(portfolio: "Portfolio", rf_daily: float = 0.0) -> dict:
+        """Convenience: calcula extra stats directamente desde un Portfolio."""
+        r = portfolio.log_returns()
+        return extra_stats_from_returns(r, rf_daily=rf_daily)       
+
+    """
     # ---------- Reporting ----------
     def report(self, include_warnings: bool = True) -> str:
         
